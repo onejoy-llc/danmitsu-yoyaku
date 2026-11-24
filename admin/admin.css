@@ -21,8 +21,8 @@ img { display: block; }
 .top__name span { font-size: 12px; color: var(--ink-2); letter-spacing: .1em; }
 .top__link { font-size: 12px; color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
 
-.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-.tabs button { position: relative; height: 56px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: grid; grid-template-columns: repeat(6, 1fr); background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+.tabs button { position: relative; height: 56px; font-size: 11px; white-space: nowrap; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
 .tabs button[aria-current="true"] { color: var(--ink); box-shadow: inset 0 2px 0 var(--ink); }
 .tabs i { position: absolute; top: 8px; left: calc(50% + 10px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--stop); color: #fff; font-style: normal; font-size: 11px; line-height: 18px; }
 
@@ -106,7 +106,7 @@ img { display: block; }
 /* フォーム */
 .f { margin-bottom: 14px; }
 .f > label, .f > span.l { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 5px; }
-.f input[type="text"], .f input[type="number"], .f input[type="tel"], .f input[type="time"], .f textarea {
+.f input[type="text"], .f input[type="number"], .f input[type="tel"], .f input[type="time"], .f input[type="email"], .f input[type="password"], .f textarea {
   width: 100%; padding: 11px 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--card); font-size: 16px; -webkit-appearance: none; appearance: none; }
 .f textarea { min-height: 84px; resize: vertical; line-height: 1.6; }
 .f input:focus, .f textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(200,137,10,.18); }
@@ -159,3 +159,15 @@ input[type="file"] { max-width: 100%; font-size: 13px; }
 .f--photo > div { min-width: 0; }
 
 .demo { margin: 0; padding: 9px 16px; background: var(--honey-wash); color: var(--honey-deep); font-size: 12px; line-height: 1.6; text-align: center; }
+
+/* エステ魂連携 */
+.tag--est { color: #8a5a9e; border-color: #c9a6d6; }
+.sf__fixed { font-size: 13px; margin: 6px 0 4px; }
+.sf__fixed small { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.est-st { font-size: 13px; line-height: 1.7; }
+.est-st b { font-weight: 700; }
+.est-st .ok { color: var(--leaf); }
+.est-st .ng { color: #b3261e; }
+.est-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.est-act .btn { height: 44px; }
+.note { font-size: 12px; color: var(--ink-3); line-height: 1.7; margin-top: 16px; }

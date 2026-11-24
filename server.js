@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const estama = require('./estama');
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 8793;
@@ -12,6 +13,8 @@ const DATA_JS = path.join(ROOT, 'js', 'data.js');
 const RES_DIR = path.join(ROOT, 'data');
 const RES_JSON = path.join(RES_DIR, 'reservations.json');
 const IMG_DIR = path.join(ROOT, 'img');
+const EST_JSON = path.join(RES_DIR, 'estama.json');   // エステ魂のログイン情報（このパソコンの中だけに保存）
+const EST_EVERY_MIN = 10;                             // 自動取り込みの間隔（分）
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -70,8 +73,10 @@ function cleanData(d) {
     if (!Number.isInteger(id) || id <= 0 || ids[id]) throw new Error('セラピストのIDが正しくありません');
     ids[id] = 1;
     if (!str(g.name, 20).trim()) throw new Error('セラピストの名前が空です');
-    return { id, name: str(g.name, 20).trim(), age: Math.max(0, Math.min(99, Number(g.age) || 0)), new: !!g.new,
+    const rec = { id, name: str(g.name, 20).trim(), age: Math.max(0, Math.min(99, Number(g.age) || 0)), new: !!g.new,
       img: /^img\/[\w.-]+$/.test(g.img) ? g.img : '' };
+    if (Number.isInteger(Number(g.estama)) && Number(g.estama) > 0) rec.estama = Number(g.estama);   // エステ魂のセラピスト番号
+    return rec;
   });
   const days = {};
   Object.keys(d.days).sort().forEach((date) => {
@@ -113,6 +118,89 @@ function unblock(d, r) {          // 取消・削除 → × を戻す
   if (e && had) e.booked = e.booked.filter((t) => !r.blocked.includes(t));
   r.blocked = [];
   return !!e && had;
+}
+
+/* ---------- エステ魂から出勤を取り込む（読むだけ） ---------- */
+const est = { running: false, session: null, mail: '' };
+function readEst() { try { return JSON.parse(fs.readFileSync(EST_JSON, 'utf8')); } catch (e) { return {}; } }
+function writeEst(o) {
+  fs.mkdirSync(RES_DIR, { recursive: true });
+  writeAtomic(EST_JSON, JSON.stringify(o, null, 1));
+  try { fs.chmodSync(EST_JSON, 0o600); } catch (e) { /* Windows では効かないことがある */ }
+}
+function estStatus() {
+  const c = readEst();
+  return { mail: c.mail || '', hasPassword: !!c.password, auto: c.auto !== false, every: EST_EVERY_MIN, running: est.running, last: c.last || null };
+}
+const norm = (s) => String(s).replace(/新人|[♡♥❤☆★♪\s\u3000\uFE0F]/g, '');
+
+async function syncEstama(reason) {
+  if (est.running) throw new Error('いま取り込み中です。少しお待ちください。');
+  const conf = readEst();
+  if (!conf.mail || !conf.password) throw new Error('エステ魂のメールアドレスとパスワードを登録してください');
+  est.running = true;
+  const at = new Date().toISOString();
+  let last;
+  try {
+    const r = await estama.fetchSchedule(conf.mail, conf.password, { session: est.mail === conf.mail ? est.session : null });
+    est.session = r.session; est.mail = conf.mail;
+    const d = readData(), added = [];
+
+    // セラピストの対応づけ：エステ魂の番号 → 同じ名前 → 新しく追加
+    for (const c of r.casts) {
+      let g = d.girls.find((x) => x.estama === c.castId);
+      if (!g) { g = d.girls.find((x) => !x.estama && norm(x.name) === norm(c.name)); if (g) g.estama = c.castId; }
+      if (!g) {
+        const shop = /shop_data\/0*(\d+)\//.exec(c.img);
+        g = { id: Math.max(0, ...d.girls.map((x) => x.id)) + 1, name: c.name.replace(/新人/g, '').trim().slice(0, 20) || 'セラピスト',
+          age: shop ? await estama.fetchAge(shop[1], c.castId) : 0, new: /新人/.test(c.name), img: '', estama: c.castId };
+        d.girls.push(g); added.push(g.name);
+      }
+      if (!g.img && c.img) {
+        try {
+          const im = await estama.fetchImage(c.img.replace('/250x250/', '/357x556/'));
+          const name = 'estama_' + c.castId + '_' + Date.now().toString(36) + '.' + im.ext;
+          fs.writeFileSync(path.join(IMG_DIR, name), im.buf);
+          g.img = 'img/' + name;
+        } catch (e) { console.log('写真を取得できませんでした:', g.name, e.message); }
+      }
+    }
+
+    // 出勤：エステ魂とつながっているセラピストは、エステ魂の内容で置き換える（手で入れた他の人の出勤はそのまま）
+    const idOf = {}; d.girls.forEach((g) => { if (g.estama) idOf[g.estama] = g.id; });
+    const linked = (id) => { const g = d.girls.find((x) => x.id === id); return !!(g && g.estama); };
+    let shifts = 0;
+    Object.keys(r.days).forEach((date) => {
+      const keep = (d.days[date] || []).filter((e) => !linked(e.id));
+      const got = r.days[date].map((x) => ({ id: idOf[x.castId], from: x.from, to: x.to, full: x.full, booked: x.booked.slice() }))
+        .filter((e) => e.id && !keep.some((k) => k.id === e.id));
+      shifts += got.length;
+      const list = keep.concat(got).sort((a, b) => toMin(a.from) - toMin(b.from));
+      if (list.length) d.days[date] = list; else delete d.days[date];
+    });
+
+    // このサイトで確定した予約の × を、取り込んだ出勤にもう一度反映する
+    const res = readRes();
+    let resChanged = false;
+    res.forEach((x) => { if (x.status === 'confirmed' && r.days[x.date]) { block(d, x); resChanged = true; } });
+    writeData(d);
+    if (resChanged) writeRes(res);
+    last = { at, ok: true, reason, days: Object.keys(r.days).length, shifts, added };
+    console.log('エステ魂から出勤を取り込みました:', shifts + '件', added.length ? '（追加: ' + added.join('、') + '）' : '');
+    return last;
+  } catch (e) {
+    est.session = null;
+    last = { at, ok: false, reason, error: e.message || '取り込みに失敗しました' };
+    console.log('エステ魂の取り込みに失敗しました:', last.error);
+    throw e;
+  } finally {
+    est.running = false;
+    const now = readEst(); now.last = last; writeEst(now);   // 取り込み中に設定が変わっても上書きしない
+  }
+}
+function autoSync() {
+  const c = readEst();
+  if (c.auto !== false && c.mail && c.password && !est.running) syncEstama('自動').catch(() => {});
 }
 
 /* ---------- HTTP ---------- */
@@ -190,6 +278,30 @@ async function api(req, res, url) {
   }
   if (p === '/api/reservations' && m === 'GET') return send(res, 200, readRes());
 
+  // エステ魂の連携設定（パスワードは画面に返さない）
+  if (p === '/api/estama' && m === 'GET') return send(res, 200, estStatus());
+  if (p === '/api/estama' && m === 'PUT') {
+    const b = await body(req, 5000), c = readEst();
+    const mail = str(b.mail, 200).trim();
+    if (!mail) return send(res, 400, { error: 'メールアドレスを入力してください' });
+    if (mail !== c.mail) { est.session = null; c.last = null; }
+    c.mail = mail;
+    if (typeof b.password === 'string' && b.password) { c.password = str(b.password, 200); est.session = null; }
+    if (!c.password) return send(res, 400, { error: 'パスワードを入力してください' });
+    c.auto = b.auto !== false;
+    writeEst(c);
+    return send(res, 200, estStatus());
+  }
+  if (p === '/api/estama' && m === 'DELETE') {
+    try { fs.unlinkSync(EST_JSON); } catch (e) { /* もともと無い */ }
+    est.session = null;
+    return send(res, 200, estStatus());
+  }
+  if (p === '/api/estama/sync' && m === 'POST') {
+    try { await syncEstama('手動'); } catch (e) { return send(res, 400, Object.assign(estStatus(), { error: e.message })); }
+    return send(res, 200, Object.assign(estStatus(), { data: readData() }));
+  }
+
   const one = /^\/api\/reservations\/([a-z0-9]+)$/.exec(p);
   if (one && (m === 'PATCH' || m === 'DELETE')) {
     const list = readRes(), i = list.findIndex((r) => r.id === one[1]);
@@ -221,7 +333,7 @@ function file(req, res, url) {
   const rel = path.relative(ROOT, abs);
   const top = rel.split(path.sep)[0];
   // 予約データ・サーバー本体・隠しファイルは配信しない
-  if (rel.startsWith('..') || path.isAbsolute(rel) || top === 'data' || top === 'server.js' || rel.split(path.sep).some((s) => s.startsWith('.'))) return send(res, 404, 'Not found', 'text/plain');
+  if (rel.startsWith('..') || path.isAbsolute(rel) || top === 'data' || top === 'server.js' || top === 'estama.js' || rel.split(path.sep).some((s) => s.startsWith('.'))) return send(res, 404, 'Not found', 'text/plain');
   if (top === 'admin' && !isLocal(req)) return send(res, 403, '管理画面はこのパソコンからのみ開けます', 'text/plain; charset=utf-8');
   fs.stat(abs, (err, st) => {
     if (err) return send(res, 404, 'Not found', 'text/plain');
@@ -241,4 +353,6 @@ http.createServer((req, res) => {
 }).listen(PORT, () => {
   console.log('予約サイト   http://localhost:' + PORT + '/');
   console.log('管理画面     http://localhost:' + PORT + '/admin/');
+  setTimeout(autoSync, 5000);                                   // 起動して少ししたら1回
+  setInterval(autoSync, EST_EVERY_MIN * 60 * 1000);             // その後は10分ごと
 });

@@ -15,7 +15,7 @@
   var jp = function (s) { var d = parse(s); return (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WD[d.getDay()] + '）'; };
 
   var today = iso(new Date());
-  var DATA = null, RES = [];
+  var DATA = null, RES = [], EST = null;
   var ui = { tab: 'res', filter: 'new', date: today };
 
   /* ---------- 通信 ---------- */
@@ -86,10 +86,11 @@
     $('badge').hidden = !n; $('badge').textContent = n;
   }
   function girl(id) { return DATA.girls.filter(function (g) { return g.id === id; })[0]; }
+  var ageTxt = function (g) { return g.age ? g.age + '歳' : ''; };
 
   /* ---------- 画面 ---------- */
   function render() {
-    var v = { res: viewRes, shift: viewShift, girl: viewGirl, course: viewCourse, shop: viewShop }[ui.tab];
+    var v = { res: viewRes, shift: viewShift, girl: viewGirl, course: viewCourse, shop: viewShop, est: viewEst }[ui.tab];
     $('view').innerHTML = v();
     [].forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.setAttribute('aria-current', b.dataset.tab === ui.tab); });
   }
@@ -133,8 +134,15 @@
     if (!list.length) h += '<p class="empty">この日の出勤はまだ登録されていません。</p>';
     h += list.map(function (e) {
       var g = girl(e.id);
+      if (g.estama) {   // エステ魂から取り込んだ出勤：ここでは変えられない（次の取り込みで上書きされるため）
+        var open = (toMin(e.to) - toMin(e.from)) / 10 - e.booked.length;
+        return '<article class="card sf"><img class="sf__img" src="../' + esc(g.img) + '" alt=""><div>' +
+          '<p class="sf__name"><span class="tag tag--est">エステ魂</span>' + esc(g.name) + '<small>' + ageTxt(g) + '</small></p>' +
+          '<p class="sf__fixed num">' + esc(e.from) + '～' + esc(e.to) + (e.full ? '　満員御礼' : '　予約済み ' + e.booked.length * 10 + '分 / 空き ' + Math.max(0, open) * 10 + '分') +
+          '<small>時間や空きの変更はエステ魂の管理画面で行ってください。' + (EST && EST.auto ? EST.every + '分ごとに' : '取り込むと') + 'ここに反映されます。</small></p></div></article>';
+      }
       return '<article class="card sf"><img class="sf__img" src="../' + esc(g.img) + '" alt=""><div>' +
-        '<p class="sf__name">' + esc(g.name) + '<small>' + g.age + '歳</small></p>' +
+        '<p class="sf__name">' + esc(g.name) + '<small>' + ageTxt(g) + '</small></p>' +
         '<div class="sf__time"><input type="time" step="600" value="' + hm2(e.from) + '" data-chg="from" data-id="' + e.id + '" aria-label="開始">～<input type="time" step="600" value="' + hm2(e.to) + '" data-chg="to" data-id="' + e.id + '" aria-label="終了"></div>' +
         '<div class="sf__row"><label class="sw"><input type="checkbox" data-chg="full" data-id="' + e.id + '"' + (e.full ? ' checked' : '') + '><i></i>満員御礼</label>' +
         '<button type="button" class="btn btn--line btn--s" data-act="slots" data-id="' + e.id + '">予約済みの枠 ' + e.booked.length + '</button>' +
@@ -142,9 +150,9 @@
     }).join('');
 
     var on = {}; list.forEach(function (e) { on[e.id] = 1; });
-    var rest = DATA.girls.filter(function (g) { return !on[g.id]; });
+    var rest = DATA.girls.filter(function (g) { return !on[g.id] && !g.estama; });
     if (rest.length) {
-      h += '<div class="add"><h2>出勤を追加</h2><select id="addGirl" aria-label="セラピスト">' + rest.map(function (g) { return '<option value="' + g.id + '">' + esc(g.name) + '（' + g.age + '）</option>'; }).join('') + '</select>' +
+      h += '<div class="add"><h2>出勤を追加</h2><select id="addGirl" aria-label="セラピスト">' + rest.map(function (g) { return '<option value="' + g.id + '">' + esc(g.name) + (g.age ? '（' + g.age + '）' : '') + '</option>'; }).join('') + '</select>' +
         '<div class="add__t"><input type="time" step="600" id="addFrom" value="12:00" aria-label="開始">～<input type="time" step="600" id="addTo" value="18:00" aria-label="終了"></div>' +
         '<button type="button" class="btn" data-act="shift-add">追加する</button></div>';
     }
@@ -156,8 +164,8 @@
       '<p class="lead">在籍 ' + DATA.girls.length + '名。名前を押すと編集できます。</p>' +
       DATA.girls.map(function (g) {
         var next = Object.keys(DATA.days).sort().filter(function (s) { return s >= today && DATA.days[s].some(function (e) { return e.id === g.id; }); })[0];
-        return '<article class="card gl"><img class="gl__img" src="../' + esc(g.img) + '" alt="" loading="lazy"><div><p class="gl__name">' + (g.new ? '<span class="tag">NEW</span>' : '') + esc(g.name) + '</p>' +
-          '<p class="gl__sub">' + g.age + '歳　' + (next ? '次回 ' + jp(next) : '出勤予定なし') + '</p></div>' +
+        return '<article class="card gl"><img class="gl__img" src="../' + esc(g.img) + '" alt="" loading="lazy"><div><p class="gl__name">' + (g.estama ? '<span class="tag tag--est">エステ魂</span>' : '') + (g.new ? '<span class="tag">NEW</span>' : '') + esc(g.name) + '</p>' +
+          '<p class="gl__sub">' + (g.age ? g.age + '歳　' : '年齢未登録　') + (next ? '次回 ' + jp(next) : '出勤予定なし') + '</p></div>' +
           '<button type="button" class="btn btn--line btn--s" data-act="girl-edit" data-id="' + g.id + '">編集</button></article>';
       }).join('');
   }
@@ -196,6 +204,45 @@
       '<div class="two">' + field('freeFrom', '選べる時間：開始', s.freeFrom, { hint: '例 10:00' }) + field('freeTo', '選べる時間：終了', s.freeTo, { hint: '翌6時は 30:00 と書きます' }) + '</div>' +
       field('freeNote', 'フリーの説明文', s.freeNote, { type: 'textarea' }) +
       '<button type="submit" class="btn" style="height:48px;width:100%">店舗情報を保存する</button></form>';
+  }
+
+  function viewEst() {
+    var h = '<div class="h"><h1>エステ魂</h1></div><p class="lead">エステ魂の出勤表を読み込んで、この予約サイトの出勤と空き状況に反映します。エステ魂の内容は読むだけで、書き換えません。</p>';
+    if (DEMO) return h + '<p class="empty">デモ表示では使えません。<br><small>お店のパソコンで <code>node server.js</code> を起動して開いた管理画面から設定してください。</small></p>';
+    if (!EST) return h + '<p class="empty">読み込んでいます…</p>';
+    var L = EST.last, st;
+    if (EST.running) st = '<p class="est-st">いま取り込み中です…</p>';
+    else if (!L) st = '<p class="est-st">まだ取り込んでいません。</p>';
+    else {
+      var t = new Date(L.at), when = (t.getMonth() + 1) + '/' + t.getDate() + ' ' + t.getHours() + ':' + pad(t.getMinutes()) + '（' + esc(L.reason) + '）';
+      st = L.ok
+        ? '<p class="est-st"><b class="ok">取り込みました</b>　' + when + '<br>今日から' + L.days + '日分・出勤 ' + L.shifts + '件' +
+          (L.added && L.added.length ? '<br>新しく追加したセラピスト：' + L.added.map(esc).join('、') + '（年齢と写真は「セラピスト」で確認してください）' : '') + '</p>'
+        : '<p class="est-st"><b class="ng">取り込めませんでした</b>　' + when + '<br>' + esc(L.error) + '</p>';
+    }
+    return h + '<div class="card">' + st + '</div><form class="form" id="estForm">' +
+      '<h2>ログイン情報</h2>' +
+      '<div class="f"><label for="f_estMail">メールアドレス</label><input id="f_estMail" name="mail" type="email" autocomplete="off" value="' + esc(EST.mail) + '"></div>' +
+      '<div class="f"><label for="f_estPw">パスワード</label><input id="f_estPw" name="password" type="password" autocomplete="new-password" placeholder="' + (EST.hasPassword ? '保存済み（変えるときだけ入力）' : '') + '">' +
+      '<small>このパソコンの中（data フォルダ）にだけ保存され、外には送られません。</small></div>' +
+      '<div class="f"><span><label class="sw"><input type="checkbox" name="auto"' + (EST.auto ? ' checked' : '') + '><i></i>' + EST.every + '分ごとに自動で取り込む</label></span></div>' +
+      '<div class="est-act"><button type="submit" class="btn"' + (EST.running ? ' disabled' : '') + '>保存して今すぐ取り込む</button>' +
+      (EST.hasPassword ? '<button type="button" class="btn btn--line" data-act="est-sync"' + (EST.running ? ' disabled' : '') + '>今すぐ取り込む</button>' +
+        '<button type="button" class="btn btn--danger" data-act="est-off">連携をやめる</button>' : '') + '</div></form>' +
+      '<p class="note">・エステ魂のセラピストは、名前が同じ人と自動でつなぎます。いない人は新しく追加します。<br>' +
+      '・つながったセラピストの出勤は、エステ魂の内容で上書きされます（時間・○×・満員）。エステ魂で ×・TEL の時間は、予約サイトで選べなくなります。<br>' +
+      '・このサイトで「確定」にした予約の時間は、取り込んだ後も × のままです。<br>' +
+      '・取り込みはこの管理画面のサーバー（node server.js）が動いている間だけ行われます。</p>';
+  }
+  function loadEst() {
+    if (DEMO) return Promise.resolve();
+    return api('GET', '/api/estama').then(function (j) { EST = j; if (ui.tab === 'est') render(); });
+  }
+  function estSync() {
+    EST.running = true; render(); toast('エステ魂から取り込んでいます…');
+    return api('POST', '/api/estama/sync').then(function (j) {
+      DATA = j.data; toast('エステ魂から出勤を取り込みました');
+    }).catch(fail).then(loadEst);
   }
 
   /* ---------- ダイアログ ---------- */
@@ -309,6 +356,10 @@
     var b = ev.target.closest('button'); if (!b) return;
     ui.tab = b.dataset.tab; render(); window.scrollTo(0, 0);
     if (ui.tab === 'res') loadRes().catch(fail);
+    if (ui.tab === 'est') loadEst().catch(fail);
+    if ((ui.tab === 'shift' || ui.tab === 'girl') && !DEMO) {   // 自動取り込みの結果を見せるため最新を読む
+      Promise.all([api('GET', '/api/data'), loadEst()]).then(function (r) { DATA = r[0]; if (!$('dlg').open) render(); }).catch(fail);
+    }
   });
 
   document.addEventListener('click', function (ev) {
@@ -319,6 +370,11 @@
     else if (act === 'dlg-close') closeDlg();
     else if (act === 'dlg-del') { Promise.resolve(dlgDel()).then(function (ok) { if (ok !== false) closeDlg(); }).catch(fail); }
     else if (act === 'girl-edit') editGirl(id);
+    else if (act === 'est-sync') estSync();
+    else if (act === 'est-off') {
+      if (!confirm('エステ魂との連携をやめて、保存したメールアドレスとパスワードを消します。取り込み済みの出勤はそのまま残ります。よろしいですか？')) return;
+      api('DELETE', '/api/estama').then(function (j) { EST = j; render(); toast('連携をやめました'); }).catch(fail);
+    }
     else if (act === 'course-edit') editCourse(id);
     else if (act === 'slots') editSlots(id);
     else if (act === 'shift-del') {
@@ -368,6 +424,15 @@
   });
 
   document.addEventListener('submit', function (ev) {
+    if (ev.target.id === 'estForm') {
+      ev.preventDefault();
+      var ef = new FormData(ev.target);
+      var body = { mail: String(ef.get('mail')).trim(), password: String(ef.get('password')), auto: ef.get('auto') === 'on' };
+      if (!body.mail) return toast('メールアドレスを入力してください', true);
+      if (!body.password && !EST.hasPassword) return toast('パスワードを入力してください', true);
+      api('PUT', '/api/estama', body).then(function (j) { EST = j; return estSync(); }).catch(fail);
+      return;
+    }
     if (ev.target.id !== 'shopForm') return;
     ev.preventDefault();
     var fd = new FormData(ev.target), s = DATA.shop;
@@ -384,6 +449,7 @@
   function start() {
     return Promise.all([api('GET', '/api/data'), api('GET', '/api/reservations')]).then(function (r) {
       DATA = r[0]; RES = r[1]; badge(); render();
+      loadEst().catch(function () {});
       setInterval(function () { if (!$('dlg').open) loadRes(true).catch(function () {}); }, 30000);
     });
   }
