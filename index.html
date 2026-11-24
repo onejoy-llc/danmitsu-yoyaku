@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>男蜜-だんみつ-鹿児島店｜ご予約</title>
+<meta name="description" content="鹿児島のメンズエステ 男蜜-だんみつ-鹿児島店のご予約ページ。出勤セラピストと空き時間を確認して、そのままご予約いただけます。">
+<meta name="theme-color" content="#faf8f3">
+<meta name="format-detection" content="telephone=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="bar__name" href="#top">
+    <span class="bar__brand">男蜜</span>
+    <span class="bar__sub">だんみつ　鹿児島店</span>
+  </a>
+  <a class="bar__tel" id="barTel" href="#">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.5h3l1.3 4-1.9 1.5a12 12 0 0 0 6 6l1.5-1.9 4 1.3v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4.600 5.700 2 2 0 0 1 6.600 3.500z"/></svg>
+    電話する
+  </a>
+</header>
+
+<main id="top" class="page">
+
+  <section class="hero">
+    <img id="heroImg" alt="男蜜-だんみつ-鹿児島店" width="533" height="800">
+  </section>
+
+  <section class="shop">
+    <p class="shop__en" id="shopEn"></p>
+    <h1 class="shop__name"><span id="shopBrand"></span><small id="shopBranch"></small></h1>
+    <p class="shop__lead" id="shopLead"></p>
+    <dl class="facts">
+      <div><dt>アクセス</dt><dd id="shopAccess"></dd></div>
+      <div><dt>営業時間</dt><dd id="shopHours"></dd></div>
+      <div><dt>お支払い</dt><dd id="shopPay"></dd></div>
+    </dl>
+    <p class="shop__recruit" id="shopRecruit"></p>
+  </section>
+
+  <section class="pick" id="pick">
+    <div class="pick__head">
+      <h2>日付から探す</h2>
+      <p id="pickLabel"></p>
+    </div>
+    <div class="days" id="days" role="tablist" aria-label="日付"></div>
+  </section>
+
+  <section class="sec">
+    <h2 class="sec__title" id="workTitle">本日の出勤</h2>
+    <div id="workList" class="rows"></div>
+  </section>
+
+  <section class="sec">
+    <h2 class="sec__title">在籍セラピスト</h2>
+    <p class="sec__note">写真を押すと、次回の出勤日と空き時間を確認できます。</p>
+    <div id="restList" class="grid"></div>
+  </section>
+
+  <footer class="foot">
+    <p class="foot__name">男蜜-だんみつ-鹿児島店</p>
+    <p id="footInfo"></p>
+    <a class="foot__tel" id="footTel" href="#"></a>
+    <p class="foot__asof" id="footAsOf"></p>
+  </footer>
+</main>
+
+<div class="sheet" id="sheet" aria-hidden="true">
+  <div class="sheet__shade" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet__top">
+      <button class="sheet__back" id="sheetBack" type="button" hidden>戻る</button>
+      <p class="sheet__step" id="sheetStep">ご予約</p>
+      <button class="sheet__close" type="button" data-close aria-label="閉じる">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="sheet__body" id="sheetBody"></div>
+    <div class="sheet__foot" id="sheetFoot"></div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

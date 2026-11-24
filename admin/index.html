@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>男蜜 管理画面</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<header class="top">
+  <p class="top__name"><b>男蜜</b><span>管理画面</span></p>
+  <a class="top__link" href="../" target="_blank" rel="noopener">予約サイトを見る</a>
+</header>
+
+<nav class="tabs" id="tabs" aria-label="メニュー">
+  <button type="button" data-tab="res" aria-current="true">予約<i id="badge" hidden></i></button>
+  <button type="button" data-tab="shift">出勤</button>
+  <button type="button" data-tab="girl">セラピスト</button>
+  <button type="button" data-tab="course">コース</button>
+  <button type="button" data-tab="shop">店舗情報</button>
+</nav>
+
+<main class="main" id="view"><p class="empty">読み込んでいます…</p></main>
+
+<dialog class="dlg" id="dlg">
+  <form method="dialog" class="dlg__in" id="dlgForm">
+    <div class="dlg__top"><h2 id="dlgTitle"></h2><button type="button" class="dlg__x" data-act="dlg-close" aria-label="閉じる">閉じる</button></div>
+    <div class="dlg__body" id="dlgBody"></div>
+    <div class="dlg__foot" id="dlgFoot"></div>
+  </form>
+</dialog>
+
+<p class="toast" id="toast" role="status" aria-live="polite"></p>
+
+<script src="admin.js"></script>
+</body>
+</html>
