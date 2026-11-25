@@ -26,6 +26,24 @@
     if (list) { try { localStorage.setItem(DEMO_KEY, JSON.stringify(list)); } catch (e) {} return list; }
     try { return JSON.parse(localStorage.getItem(DEMO_KEY) || '[]'); } catch (e) { return []; }
   }
+  // デモ用の見本予約（名前・電話番号は架空）
+  function sampleRes() {
+    var now = new Date(), today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+    var who = [['山田', '09000000001', ''], ['佐藤', '09000000002', '初めてです'], ['鈴木', '09000000003', ''], ['田中', '09000000004', '少し遅れるかもしれません']];
+    var st = ['new', 'new', 'confirmed', 'cancelled'], out = [], c = demoData.courses;
+    Object.keys(demoData.days).sort().filter(function (d) { return d >= today; }).forEach(function (d) {
+      demoData.days[d].forEach(function (e) {
+        if (out.length >= who.length) return;
+        var g = demoData.girls.filter(function (x) { return x.id === e.id; })[0], co = c[out.length % c.length];
+        var t = toMin(e.from) + 60;
+        if (!g || t + co.min > toMin(e.to)) return;
+        var i = out.length, created = new Date(now.getTime() - (i + 1) * 47 * 60000);
+        out.push({ id: 'demo' + i, createdAt: created.toISOString(), status: st[i], girl_id: g.id, girl: g.name, age: g.age || 0, date: d, time: hm(t),
+          course_id: co.id, course: co.name, min: co.min, price: co.price, tel: who[i][1], name: who[i][0] + '（見本）', biko: who[i][2], blocked: [] });
+      });
+    });
+    return out;
+  }
   function demoApi(method, url, body) {
     return new Promise(function (ok) {
       if (url === '/api/data') {
@@ -100,7 +118,9 @@
     RES.forEach(function (r) { counts[r.status]++; });
     var list = RES.filter(function (r) { return ui.filter === 'all' || r.status === ui.filter; })
       .sort(function (a, b) { return ui.filter === 'new' ? (a.createdAt < b.createdAt ? 1 : -1) : ((a.date + hm2(a.time)) < (b.date + hm2(b.time)) ? -1 : 1); });
-    var h = '<div class="h"><h1>予約</h1><p>30秒ごとに自動で更新</p></div><div class="seg">' +
+    var h = '<div class="h"><h1>予約</h1><p>30秒ごとに自動で更新</p></div>' +
+      (DEMO || (EST && EST.hasPassword) ? '<p class="lead">予約を確定すると、この予約サイトではその時間が × になります。エステ魂には自動で反映されないので、エステ魂の出勤表は手で × にしてください。</p>' : '') +
+      '<div class="seg">' +
       [['new', '新規 ' + counts.new], ['confirmed', '確定 ' + counts.confirmed], ['cancelled', 'キャンセル ' + counts.cancelled], ['all', 'すべて ' + RES.length]].map(function (f) {
         return '<button type="button" data-act="filter" data-v="' + f[0] + '" aria-pressed="' + (ui.filter === f[0]) + '">' + f[1] + '</button>';
       }).join('') + '</div>';
@@ -460,8 +480,9 @@
       document.head.appendChild(sc);
     }).then(function () {
       demoData = clone(window.DATA);
+      if (localStorage.getItem(DEMO_KEY) === null) demoRes(sampleRes());   // 初めて開いたときは、見本の予約を入れておく
       var n = document.createElement('p'); n.className = 'demo';
-      n.textContent = 'デモ表示です。ここでの変更は保存されず、予約サイトにも反映されません。予約は、このブラウザで予約サイトから入れたものだけが表示されます。';
+      n.textContent = 'デモ表示です。ここでの変更は保存されず、予約サイトにも反映されません。予約タブには見本の予約と、このブラウザで予約サイトから入れた予約が表示されます。';
       document.body.insertBefore(n, $('tabs'));
       return start();
     });
