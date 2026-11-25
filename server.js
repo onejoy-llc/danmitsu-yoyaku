@@ -39,6 +39,34 @@ function writeData(d) {
     'window.DATA = ' + JSON.stringify(d, null, 1) + ';\n\n' +
     '// 予約の送信先（server.js で開いているときは自動で接続されます）\n' +
     "window.RESERVE_ENDPOINT = '';\n");
+  syncHtml(d.shop);
+}
+
+// 店名を HTML にも書き込む（JavaScript を読まない検索エンジンや、表示直後のちらつき対策）
+const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function syncHtml(shop) {
+  const full = shop.brand + (shop.kana ? '-' + shop.kana + '-' : ' ') + shop.branch;
+  const sub = [shop.kana, shop.branch].filter(Boolean).join('　');
+  const put = (file, rules) => {
+    const f = path.join(ROOT, file);
+    let html;
+    try { html = fs.readFileSync(f, 'utf8'); } catch (e) { return; }
+    let out = html;
+    rules.forEach(([re, val]) => { out = out.replace(re, (m, a, b) => a + escHtml(val) + b); });
+    if (out !== html) writeAtomic(f, out);
+  };
+  put('index.html', [
+    [/(<title>)[^<]*(<\/title>)/, full + '｜ご予約'],
+    [/(<meta name="description" content=")[^"]*(")/, full + 'のご予約ページ。出勤セラピストと空き時間を確認して、そのままご予約いただけます。'],
+    [/(<span class="bar__brand" id="barBrand">)[^<]*(<\/span>)/, shop.brand],
+    [/(<span class="bar__sub" id="barSub">)[^<]*(<\/span>)/, sub],
+    [/(<img id="heroImg" alt=")[^"]*(")/, full],
+    [/(<p class="foot__name" id="footName">)[^<]*(<\/p>)/, full]
+  ]);
+  put(path.join('admin', 'index.html'), [
+    [/(<title>)[^<]*(<\/title>)/, shop.brand + ' 管理画面'],
+    [/(<b id="topBrand">)[^<]*(<\/b>)/, shop.brand]
+  ]);
 }
 function readRes() {
   try { return JSON.parse(fs.readFileSync(RES_JSON, 'utf8')); } catch (e) { return []; }

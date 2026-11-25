@@ -89,7 +89,7 @@
   function fail(e) { toast(e.message || 'エラーが発生しました', true); }
 
   function save(msg) {
-    return api('PUT', '/api/data', DATA).then(function (d) { DATA = d; toast(msg || '保存しました'); render(); })
+    return api('PUT', '/api/data', DATA).then(function (d) { DATA = d; toast(msg || '保存しました'); render(); showBrand(); })
       .catch(function (e) { fail(e); return api('GET', '/api/data').then(function (d) { DATA = d; render(); }); });
   }
   function loadRes(quiet) {
@@ -105,6 +105,9 @@
   }
   function girl(id) { return DATA.girls.filter(function (g) { return g.id === id; })[0]; }
   var ageTxt = function (g) { return g.age ? g.age + '歳' : ''; };
+  // 店名（屋号-よみ-店舗名）。予約サイトの js/app.js と同じ作り方
+  function fullName(s) { return s.brand + (s.kana ? '-' + s.kana + '-' : ' ') + s.branch; }
+  function showBrand() { $('topBrand').textContent = DATA.shop.brand; document.title = DATA.shop.brand + ' 管理画面'; }
 
   /* ---------- 画面 ---------- */
   function render() {
@@ -210,7 +213,7 @@
   function viewShop() {
     var s = DATA.shop, a = s.asOf.split(' ');
     return '<div class="h"><h1>店舗情報</h1><p>最終更新 ' + jp(a[0]) + ' ' + a[1] + '</p></div><form class="form" id="shopForm">' +
-      '<h2>店名</h2>' + field('name', '店名（ページのタイトルなど）', s.name) +
+      '<h2>店名</h2><p class="lead">サイトの上のバー、ページのタイトル、フッターの店名は、ここから自動で作られます。<br>今の表示：<b>' + esc(fullName(s)) + '</b></p>' +
       '<div class="two">' + field('brand', '屋号', s.brand) + field('kana', 'よみ', s.kana) + '</div>' +
       '<div class="two">' + field('branch', '店舗名', s.branch) + field('en', '英字表記', s.en) + '</div>' +
       '<h2>トップ写真</h2><div class="f f--photo"><img id="heroPrev" src="../' + esc(s.hero) + '" alt=""><div><input type="file" id="heroFile" accept="image/jpeg,image/png,image/webp"><small style="display:block;margin-top:6px;font-size:11.5px;color:var(--ink-3)">選ぶとすぐに差し替わります。縦長の写真がきれいに収まります。</small></div></div>' +
@@ -460,7 +463,9 @@
     var ft = String(fd.get('freeFrom')).trim(), tt = String(fd.get('freeTo')).trim();
     if (!/^\d{1,2}:\d{2}$/.test(ft) || !/^\d{1,2}:\d{2}$/.test(tt) || toMin(tt) <= toMin(ft)) return toast('フリーの選べる時間は 10:00 や 30:00 の形で、終了を開始より後にしてください', true);
     if (!/^0\d{9,10}$/.test(String(fd.get('tel')).trim())) return toast('電話番号をハイフンなしで入力してください', true);
-    ['name', 'brand', 'kana', 'branch', 'en', 'lead', 'hours', 'tel', 'recruit', 'freeHours', 'freeNote'].forEach(function (k) { s[k] = String(fd.get(k)).trim(); });
+    if (!String(fd.get('brand')).trim()) return toast('屋号を入力してください', true);
+    ['brand', 'kana', 'branch', 'en', 'lead', 'hours', 'tel', 'recruit', 'freeHours', 'freeNote'].forEach(function (k) { s[k] = String(fd.get(k)).trim(); });
+    s.name = fullName(s);
     s.access = lines('access'); s.pay = lines('pay'); s.freeFrom = ft; s.freeTo = tt;
     save('店舗情報を保存しました');
   });
@@ -468,7 +473,7 @@
   /* ---------- 起動 ---------- */
   function start() {
     return Promise.all([api('GET', '/api/data'), api('GET', '/api/reservations')]).then(function (r) {
-      DATA = r[0]; RES = r[1]; badge(); render();
+      DATA = r[0]; RES = r[1]; badge(); render(); showBrand();
       loadEst().catch(function () {});
       setInterval(function () { if (!$('dlg').open) loadRes(true).catch(function () {}); }, 30000);
     });

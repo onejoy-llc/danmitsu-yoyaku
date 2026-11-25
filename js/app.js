@@ -63,6 +63,15 @@
   }
 
   /* ---------- 店舗情報 ---------- */
+  // 店名まわり：店舗情報（屋号・よみ・店舗名）から作る
+  var fullName = S.brand + (S.kana ? '-' + S.kana + '-' : ' ') + S.branch;
+  document.title = fullName + '｜ご予約';
+  var md = document.querySelector('meta[name="description"]');
+  if (md) md.setAttribute('content', fullName + 'のご予約ページ。出勤セラピストと空き時間を確認して、そのままご予約いただけます。');
+  $('barBrand').textContent = S.brand;
+  $('barSub').textContent = [S.kana, S.branch].filter(Boolean).join('　');
+  $('footName').textContent = fullName;
+  $('heroImg').alt = fullName;
   $('heroImg').src = S.hero;
   $('shopEn').textContent = S.en;
   $('shopBrand').textContent = S.brand + ' -' + S.kana + '-';
