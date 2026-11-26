@@ -63,6 +63,15 @@
   }
 
   /* ---------- 店舗情報 ---------- */
+  // 店名まわり：店舗情報（屋号・よみ・店舗名）から作る
+  var fullName = S.brand + (S.kana ? '-' + S.kana + '-' : ' ') + S.branch;
+  document.title = fullName + '｜ご予約';
+  var metaDesc = document.querySelector('meta[name="description"]');
+  if (metaDesc) metaDesc.setAttribute('content', fullName + 'のご予約ページ。出勤セラピストと空き時間を確認して、そのままご予約いただけます。');
+  $('barBrand').textContent = S.brand;
+  $('barSub').textContent = [S.kana, S.branch].filter(Boolean).join('　');
+  $('footName').textContent = fullName;
+  $('heroImg').alt = fullName;
   $('heroImg').src = S.hero;
   $('shopEn').textContent = S.en;
   $('shopBrand').textContent = S.brand + ' -' + S.kana + '-';
@@ -127,7 +136,7 @@
       var n = nextShift(g.id);
       return '<button type="button" class="cell" data-girl="' + g.id + '">' +
         '<span class="cell__img"><img src="' + g.img + '" alt="" loading="lazy" width="266" height="400">' + (g.new ? '<span class="tag-new">NEW</span>' : '') + '</span>' +
-        '<span class="cell__name">' + esc(g.name) + '<span>' + g.age + '歳</span></span>' +
+        '<span class="cell__name">' + esc(g.name) + (g.age ? '<span>' + g.age + '歳</span>' : '') + '</span>' +
         '<span class="cell__next' + (n ? ' is-set' : '') + '">' + (n ? '次回 ' + md(n) : '出勤予定 未定') + '</span></button>';
     }).join('');
   }

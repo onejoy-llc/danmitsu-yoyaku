@@ -15,7 +15,7 @@
   var jp = function (s) { var d = parse(s); return (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WD[d.getDay()] + '）'; };
 
   var today = iso(new Date());
-  var DATA = null, RES = [];
+  var DATA = null, RES = [], EST = null;
   var ui = { tab: 'res', filter: 'new', date: today };
 
   /* ---------- 通信 ---------- */
@@ -25,6 +25,24 @@
   function demoRes(list) {
     if (list) { try { localStorage.setItem(DEMO_KEY, JSON.stringify(list)); } catch (e) {} return list; }
     try { return JSON.parse(localStorage.getItem(DEMO_KEY) || '[]'); } catch (e) { return []; }
+  }
+  // デモ用の見本予約（名前・電話番号は架空）
+  function sampleRes() {
+    var now = new Date(), today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+    var who = [['山田', '09000000001', ''], ['佐藤', '09000000002', '初めてです'], ['鈴木', '09000000003', ''], ['田中', '09000000004', '少し遅れるかもしれません']];
+    var st = ['new', 'new', 'confirmed', 'cancelled'], out = [], c = demoData.courses;
+    Object.keys(demoData.days).sort().filter(function (d) { return d >= today; }).forEach(function (d) {
+      demoData.days[d].forEach(function (e) {
+        if (out.length >= who.length) return;
+        var g = demoData.girls.filter(function (x) { return x.id === e.id; })[0], co = c[out.length % c.length];
+        var t = toMin(e.from) + 60;
+        if (!g || t + co.min > toMin(e.to)) return;
+        var i = out.length, created = new Date(now.getTime() - (i + 1) * 47 * 60000);
+        out.push({ id: 'demo' + i, createdAt: created.toISOString(), status: st[i], girl_id: g.id, girl: g.name, age: g.age || 0, date: d, time: hm(t),
+          course_id: co.id, course: co.name, min: co.min, price: co.price, tel: who[i][1], name: who[i][0] + '（見本）', biko: who[i][2], blocked: [] });
+      });
+    });
+    return out;
   }
   function demoApi(method, url, body) {
     return new Promise(function (ok) {
@@ -71,7 +89,7 @@
   function fail(e) { toast(e.message || 'エラーが発生しました', true); }
 
   function save(msg) {
-    return api('PUT', '/api/data', DATA).then(function (d) { DATA = d; toast(msg || '保存しました'); render(); })
+    return api('PUT', '/api/data', DATA).then(function (d) { DATA = d; toast(msg || '保存しました'); render(); showBrand(); })
       .catch(function (e) { fail(e); return api('GET', '/api/data').then(function (d) { DATA = d; render(); }); });
   }
   function loadRes(quiet) {
@@ -86,10 +104,14 @@
     $('badge').hidden = !n; $('badge').textContent = n;
   }
   function girl(id) { return DATA.girls.filter(function (g) { return g.id === id; })[0]; }
+  var ageTxt = function (g) { return g.age ? g.age + '歳' : ''; };
+  // 店名（屋号-よみ-店舗名）。予約サイトの js/app.js と同じ作り方
+  function fullName(s) { return s.brand + (s.kana ? '-' + s.kana + '-' : ' ') + s.branch; }
+  function showBrand() { $('topBrand').textContent = DATA.shop.brand; document.title = DATA.shop.brand + ' 管理画面'; }
 
   /* ---------- 画面 ---------- */
   function render() {
-    var v = { res: viewRes, shift: viewShift, girl: viewGirl, course: viewCourse, shop: viewShop }[ui.tab];
+    var v = { res: viewRes, shift: viewShift, girl: viewGirl, course: viewCourse, shop: viewShop, est: viewEst }[ui.tab];
     $('view').innerHTML = v();
     [].forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.setAttribute('aria-current', b.dataset.tab === ui.tab); });
   }
@@ -99,7 +121,9 @@
     RES.forEach(function (r) { counts[r.status]++; });
     var list = RES.filter(function (r) { return ui.filter === 'all' || r.status === ui.filter; })
       .sort(function (a, b) { return ui.filter === 'new' ? (a.createdAt < b.createdAt ? 1 : -1) : ((a.date + hm2(a.time)) < (b.date + hm2(b.time)) ? -1 : 1); });
-    var h = '<div class="h"><h1>予約</h1><p>30秒ごとに自動で更新</p></div><div class="seg">' +
+    var h = '<div class="h"><h1>予約</h1><p>30秒ごとに自動で更新</p></div>' +
+      (DEMO || (EST && EST.hasPassword) ? '<p class="lead">予約を確定すると、この予約サイトではその時間が × になります。エステ魂には自動で反映されないので、エステ魂の出勤表は手で × にしてください。</p>' : '') +
+      '<div class="seg">' +
       [['new', '新規 ' + counts.new], ['confirmed', '確定 ' + counts.confirmed], ['cancelled', 'キャンセル ' + counts.cancelled], ['all', 'すべて ' + RES.length]].map(function (f) {
         return '<button type="button" data-act="filter" data-v="' + f[0] + '" aria-pressed="' + (ui.filter === f[0]) + '">' + f[1] + '</button>';
       }).join('') + '</div>';
@@ -133,8 +157,15 @@
     if (!list.length) h += '<p class="empty">この日の出勤はまだ登録されていません。</p>';
     h += list.map(function (e) {
       var g = girl(e.id);
+      if (g.estama) {   // エステ魂から取り込んだ出勤：ここでは変えられない（次の取り込みで上書きされるため）
+        var open = (toMin(e.to) - toMin(e.from)) / 10 - e.booked.length;
+        return '<article class="card sf"><img class="sf__img" src="../' + esc(g.img) + '" alt=""><div>' +
+          '<p class="sf__name"><span class="tag tag--est">エステ魂</span>' + esc(g.name) + '<small>' + ageTxt(g) + '</small></p>' +
+          '<p class="sf__fixed num">' + esc(e.from) + '～' + esc(e.to) + (e.full ? '　満員御礼' : '　予約済み ' + e.booked.length * 10 + '分 / 空き ' + Math.max(0, open) * 10 + '分') +
+          '<small>時間や空きの変更はエステ魂の管理画面で行ってください。' + (EST && EST.auto ? EST.every + '分ごとに' : '取り込むと') + 'ここに反映されます。</small></p></div></article>';
+      }
       return '<article class="card sf"><img class="sf__img" src="../' + esc(g.img) + '" alt=""><div>' +
-        '<p class="sf__name">' + esc(g.name) + '<small>' + g.age + '歳</small></p>' +
+        '<p class="sf__name">' + esc(g.name) + '<small>' + ageTxt(g) + '</small></p>' +
         '<div class="sf__time"><input type="time" step="600" value="' + hm2(e.from) + '" data-chg="from" data-id="' + e.id + '" aria-label="開始">～<input type="time" step="600" value="' + hm2(e.to) + '" data-chg="to" data-id="' + e.id + '" aria-label="終了"></div>' +
         '<div class="sf__row"><label class="sw"><input type="checkbox" data-chg="full" data-id="' + e.id + '"' + (e.full ? ' checked' : '') + '><i></i>満員御礼</label>' +
         '<button type="button" class="btn btn--line btn--s" data-act="slots" data-id="' + e.id + '">予約済みの枠 ' + e.booked.length + '</button>' +
@@ -142,9 +173,9 @@
     }).join('');
 
     var on = {}; list.forEach(function (e) { on[e.id] = 1; });
-    var rest = DATA.girls.filter(function (g) { return !on[g.id]; });
+    var rest = DATA.girls.filter(function (g) { return !on[g.id] && !g.estama; });
     if (rest.length) {
-      h += '<div class="add"><h2>出勤を追加</h2><select id="addGirl" aria-label="セラピスト">' + rest.map(function (g) { return '<option value="' + g.id + '">' + esc(g.name) + '（' + g.age + '）</option>'; }).join('') + '</select>' +
+      h += '<div class="add"><h2>出勤を追加</h2><select id="addGirl" aria-label="セラピスト">' + rest.map(function (g) { return '<option value="' + g.id + '">' + esc(g.name) + (g.age ? '（' + g.age + '）' : '') + '</option>'; }).join('') + '</select>' +
         '<div class="add__t"><input type="time" step="600" id="addFrom" value="12:00" aria-label="開始">～<input type="time" step="600" id="addTo" value="18:00" aria-label="終了"></div>' +
         '<button type="button" class="btn" data-act="shift-add">追加する</button></div>';
     }
@@ -156,8 +187,8 @@
       '<p class="lead">在籍 ' + DATA.girls.length + '名。名前を押すと編集できます。</p>' +
       DATA.girls.map(function (g) {
         var next = Object.keys(DATA.days).sort().filter(function (s) { return s >= today && DATA.days[s].some(function (e) { return e.id === g.id; }); })[0];
-        return '<article class="card gl"><img class="gl__img" src="../' + esc(g.img) + '" alt="" loading="lazy"><div><p class="gl__name">' + (g.new ? '<span class="tag">NEW</span>' : '') + esc(g.name) + '</p>' +
-          '<p class="gl__sub">' + g.age + '歳　' + (next ? '次回 ' + jp(next) : '出勤予定なし') + '</p></div>' +
+        return '<article class="card gl"><img class="gl__img" src="../' + esc(g.img) + '" alt="" loading="lazy"><div><p class="gl__name">' + (g.estama ? '<span class="tag tag--est">エステ魂</span>' : '') + (g.new ? '<span class="tag">NEW</span>' : '') + esc(g.name) + '</p>' +
+          '<p class="gl__sub">' + (g.age ? g.age + '歳　' : '年齢未登録　') + (next ? '次回 ' + jp(next) : '出勤予定なし') + '</p></div>' +
           '<button type="button" class="btn btn--line btn--s" data-act="girl-edit" data-id="' + g.id + '">編集</button></article>';
       }).join('');
   }
@@ -182,7 +213,7 @@
   function viewShop() {
     var s = DATA.shop, a = s.asOf.split(' ');
     return '<div class="h"><h1>店舗情報</h1><p>最終更新 ' + jp(a[0]) + ' ' + a[1] + '</p></div><form class="form" id="shopForm">' +
-      '<h2>店名</h2>' + field('name', '店名（ページのタイトルなど）', s.name) +
+      '<h2>店名</h2><p class="lead">サイトの上のバー、ページのタイトル、フッターの店名は、ここから自動で作られます。<br>今の表示：<b>' + esc(fullName(s)) + '</b></p>' +
       '<div class="two">' + field('brand', '屋号', s.brand) + field('kana', 'よみ', s.kana) + '</div>' +
       '<div class="two">' + field('branch', '店舗名', s.branch) + field('en', '英字表記', s.en) + '</div>' +
       '<h2>トップ写真</h2><div class="f f--photo"><img id="heroPrev" src="../' + esc(s.hero) + '" alt=""><div><input type="file" id="heroFile" accept="image/jpeg,image/png,image/webp"><small style="display:block;margin-top:6px;font-size:11.5px;color:var(--ink-3)">選ぶとすぐに差し替わります。縦長の写真がきれいに収まります。</small></div></div>' +
@@ -196,6 +227,45 @@
       '<div class="two">' + field('freeFrom', '選べる時間：開始', s.freeFrom, { hint: '例 10:00' }) + field('freeTo', '選べる時間：終了', s.freeTo, { hint: '翌6時は 30:00 と書きます' }) + '</div>' +
       field('freeNote', 'フリーの説明文', s.freeNote, { type: 'textarea' }) +
       '<button type="submit" class="btn" style="height:48px;width:100%">店舗情報を保存する</button></form>';
+  }
+
+  function viewEst() {
+    var h = '<div class="h"><h1>エステ魂</h1></div><p class="lead">エステ魂の出勤表を読み込んで、この予約サイトの出勤と空き状況に反映します。エステ魂の内容は読むだけで、書き換えません。</p>';
+    if (DEMO) return h + '<p class="empty">デモ表示では使えません。<br><small>お店のパソコンで <code>node server.js</code> を起動して開いた管理画面から設定してください。</small></p>';
+    if (!EST) return h + '<p class="empty">読み込んでいます…</p>';
+    var L = EST.last, st;
+    if (EST.running) st = '<p class="est-st">いま取り込み中です…</p>';
+    else if (!L) st = '<p class="est-st">まだ取り込んでいません。</p>';
+    else {
+      var t = new Date(L.at), when = (t.getMonth() + 1) + '/' + t.getDate() + ' ' + t.getHours() + ':' + pad(t.getMinutes()) + '（' + esc(L.reason) + '）';
+      st = L.ok
+        ? '<p class="est-st"><b class="ok">取り込みました</b>　' + when + '<br>今日から' + L.days + '日分・出勤 ' + L.shifts + '件' +
+          (L.added && L.added.length ? '<br>新しく追加したセラピスト：' + L.added.map(esc).join('、') + '（年齢と写真は「セラピスト」で確認してください）' : '') + '</p>'
+        : '<p class="est-st"><b class="ng">取り込めませんでした</b>　' + when + '<br>' + esc(L.error) + '</p>';
+    }
+    return h + '<div class="card">' + st + '</div><form class="form" id="estForm">' +
+      '<h2>ログイン情報</h2>' +
+      '<div class="f"><label for="f_estMail">メールアドレス</label><input id="f_estMail" name="mail" type="email" autocomplete="off" value="' + esc(EST.mail) + '"></div>' +
+      '<div class="f"><label for="f_estPw">パスワード</label><input id="f_estPw" name="password" type="password" autocomplete="new-password" placeholder="' + (EST.hasPassword ? '保存済み（変えるときだけ入力）' : '') + '">' +
+      '<small>このパソコンの中（data フォルダ）にだけ保存され、外には送られません。</small></div>' +
+      '<div class="f"><span><label class="sw"><input type="checkbox" name="auto"' + (EST.auto ? ' checked' : '') + '><i></i>' + EST.every + '分ごとに自動で取り込む</label></span></div>' +
+      '<div class="est-act"><button type="submit" class="btn"' + (EST.running ? ' disabled' : '') + '>保存して今すぐ取り込む</button>' +
+      (EST.hasPassword ? '<button type="button" class="btn btn--line" data-act="est-sync"' + (EST.running ? ' disabled' : '') + '>今すぐ取り込む</button>' +
+        '<button type="button" class="btn btn--danger" data-act="est-off">連携をやめる</button>' : '') + '</div></form>' +
+      '<p class="note">・エステ魂のセラピストは、名前が同じ人と自動でつなぎます。いない人は新しく追加します。<br>' +
+      '・つながったセラピストの出勤は、エステ魂の内容で上書きされます（時間・○×・満員）。エステ魂で ×・TEL の時間は、予約サイトで選べなくなります。<br>' +
+      '・このサイトで「確定」にした予約の時間は、取り込んだ後も × のままです。<br>' +
+      '・取り込みはこの管理画面のサーバー（node server.js）が動いている間だけ行われます。</p>';
+  }
+  function loadEst() {
+    if (DEMO) return Promise.resolve();
+    return api('GET', '/api/estama').then(function (j) { EST = j; if (ui.tab === 'est') render(); });
+  }
+  function estSync() {
+    EST.running = true; render(); toast('エステ魂から取り込んでいます…');
+    return api('POST', '/api/estama/sync').then(function (j) {
+      DATA = j.data; toast('エステ魂から出勤を取り込みました');
+    }).catch(fail).then(loadEst);
   }
 
   /* ---------- ダイアログ ---------- */
@@ -309,6 +379,10 @@
     var b = ev.target.closest('button'); if (!b) return;
     ui.tab = b.dataset.tab; render(); window.scrollTo(0, 0);
     if (ui.tab === 'res') loadRes().catch(fail);
+    if (ui.tab === 'est') loadEst().catch(fail);
+    if ((ui.tab === 'shift' || ui.tab === 'girl') && !DEMO) {   // 自動取り込みの結果を見せるため最新を読む
+      Promise.all([api('GET', '/api/data'), loadEst()]).then(function (r) { DATA = r[0]; if (!$('dlg').open) render(); }).catch(fail);
+    }
   });
 
   document.addEventListener('click', function (ev) {
@@ -319,6 +393,11 @@
     else if (act === 'dlg-close') closeDlg();
     else if (act === 'dlg-del') { Promise.resolve(dlgDel()).then(function (ok) { if (ok !== false) closeDlg(); }).catch(fail); }
     else if (act === 'girl-edit') editGirl(id);
+    else if (act === 'est-sync') estSync();
+    else if (act === 'est-off') {
+      if (!confirm('エステ魂との連携をやめて、保存したメールアドレスとパスワードを消します。取り込み済みの出勤はそのまま残ります。よろしいですか？')) return;
+      api('DELETE', '/api/estama').then(function (j) { EST = j; render(); toast('連携をやめました'); }).catch(fail);
+    }
     else if (act === 'course-edit') editCourse(id);
     else if (act === 'slots') editSlots(id);
     else if (act === 'shift-del') {
@@ -368,6 +447,15 @@
   });
 
   document.addEventListener('submit', function (ev) {
+    if (ev.target.id === 'estForm') {
+      ev.preventDefault();
+      var ef = new FormData(ev.target);
+      var body = { mail: String(ef.get('mail')).trim(), password: String(ef.get('password')), auto: ef.get('auto') === 'on' };
+      if (!body.mail) return toast('メールアドレスを入力してください', true);
+      if (!body.password && !EST.hasPassword) return toast('パスワードを入力してください', true);
+      api('PUT', '/api/estama', body).then(function (j) { EST = j; return estSync(); }).catch(fail);
+      return;
+    }
     if (ev.target.id !== 'shopForm') return;
     ev.preventDefault();
     var fd = new FormData(ev.target), s = DATA.shop;
@@ -375,7 +463,9 @@
     var ft = String(fd.get('freeFrom')).trim(), tt = String(fd.get('freeTo')).trim();
     if (!/^\d{1,2}:\d{2}$/.test(ft) || !/^\d{1,2}:\d{2}$/.test(tt) || toMin(tt) <= toMin(ft)) return toast('フリーの選べる時間は 10:00 や 30:00 の形で、終了を開始より後にしてください', true);
     if (!/^0\d{9,10}$/.test(String(fd.get('tel')).trim())) return toast('電話番号をハイフンなしで入力してください', true);
-    ['name', 'brand', 'kana', 'branch', 'en', 'lead', 'hours', 'tel', 'recruit', 'freeHours', 'freeNote'].forEach(function (k) { s[k] = String(fd.get(k)).trim(); });
+    if (!String(fd.get('brand')).trim()) return toast('屋号を入力してください', true);
+    ['brand', 'kana', 'branch', 'en', 'lead', 'hours', 'tel', 'recruit', 'freeHours', 'freeNote'].forEach(function (k) { s[k] = String(fd.get(k)).trim(); });
+    s.name = fullName(s);
     s.access = lines('access'); s.pay = lines('pay'); s.freeFrom = ft; s.freeTo = tt;
     save('店舗情報を保存しました');
   });
@@ -383,7 +473,8 @@
   /* ---------- 起動 ---------- */
   function start() {
     return Promise.all([api('GET', '/api/data'), api('GET', '/api/reservations')]).then(function (r) {
-      DATA = r[0]; RES = r[1]; badge(); render();
+      DATA = r[0]; RES = r[1]; badge(); render(); showBrand();
+      loadEst().catch(function () {});
       setInterval(function () { if (!$('dlg').open) loadRes(true).catch(function () {}); }, 30000);
     });
   }
@@ -394,8 +485,9 @@
       document.head.appendChild(sc);
     }).then(function () {
       demoData = clone(window.DATA);
+      if (localStorage.getItem(DEMO_KEY) === null) demoRes(sampleRes());   // 初めて開いたときは、見本の予約を入れておく
       var n = document.createElement('p'); n.className = 'demo';
-      n.textContent = 'デモ表示です。ここでの変更は保存されず、予約サイトにも反映されません。予約は、このブラウザで予約サイトから入れたものだけが表示されます。';
+      n.textContent = 'デモ表示です。ここでの変更は保存されず、予約サイトにも反映されません。予約タブには見本の予約と、このブラウザで予約サイトから入れた予約が表示されます。';
       document.body.insertBefore(n, $('tabs'));
       return start();
     });
